@@ -1,126 +1,204 @@
-# PROG8020 Project 1 Start
-This is a somewhat complete product page. It uses Google rich snippets for products, and gets the products, image urls and offer's from a sqlite database that is committed as part of the project. Composer is used to update the dependencies from the composer.json file:
+# [PROG8020 Project 2 Start](https://github.com/rhildred/PROG8020Project2Start)
+This is part 2 of a [product page](https://github.com/rhildred/PROG8020ProjectStart). This one adds basic Create Read Update and Delete (CRUD) functionality. My intention is to complete the functionality as a way of "taking this up" after the term is up. The thing about CRUD is that it is intertwined with security. You don't want just anyone to be able to update the products that you offer. To deal with the security we add the rhildred/oauth2 composer module.
 
 ```
-
 {
     "require": {
         "slim/slim": "^2.6",
         "rhildred/slimphpviews": "dev-master",
-        "rhildred/editable": "dev-master"
+        "rhildred/editable": "dev-master",
+        "rhildred/oauth2": "dev-master"
     }
 }
 
 ```
 
-1. With the code, you need to do a `composer update` in the same folder as the composer.json file. 
-2. Then `cd www` and run `php -S localhost:8000`
-
-This project is meant to be pushed on to openshift. To this end there is an `.openshift/action_hooks/deploy` file:
+We also add a page views/crud.phtml. This page makes use of angular.js and the following UI to provide a user interface for CRUD:
 
 ```
 
-#!/bin/bash
-# .openshift/action_hooks/deploy
-( unset GIT_DIR ; cd $OPENSHIFT_REPO_DIR ; composer update )
+<div class="bookmark container" ng-app="myApp" ng-controller="myCtrl">
+    <h1>Product Maintenance</h1>
+    <div class="row">
+        <h3 class="col-md-2">Name</h3><h3 class="col-md-6">Description</h3>
+    </div>
+    <div class="row" ng-repeat="product in products track by $index">
+        <div class="col-md-2">{{product.name}}</div><div class="col-md-6">{{product.description}}</div>
+        <div class="col-md-4">
+            <button type="button" class="btn btn-primary btn-large" data-toggle="modal" data-target="#createUpdate" ng-click="editProduct($index)"><i class="fa fa-pencil"></i>&nbsp;Edit</button>
+            <button type="button" class="btn btn-danger btn-large" data-toggle="modal" data-target="#delete" ng-click="checkDelete($index)"><i class="fa fa-remove"></i>&nbsp;Delete</button>
+        </div>
+    </div>
+    <div class="row">
+        <button type="button" class="btn btn-primary btn-large" data-toggle="modal" data-target="#createUpdate" ng-click="addProduct()"><i class="fa fa-plus"></i>&nbsp;Add</button>
+
+    </div>
+    <!-- Create/Update -->
+    <div class="modal fade" id="createUpdate" role="dialog">
+        <div class="modal-dialog">
+
+            <!-- Modal content-->
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">{{title}}</h4>
+                </div>
+                <div class="modal-body">
+                    <form class="form-horizontal" role="form">
+                          <div class="form-group">
+                            <label class="control-label col-sm-3" for="productname">Name:</label>
+                            <div class="col-sm-9">
+                                <input ng-model="currentProduct.name" placeholder="product name" id="productname" class="form-control"/>
+                            </div>
+                          </div>
+                          <div class="form-group">
+                            <label class="control-label col-sm-3" for="productdescription">Description:</label>
+                            <div class="col-sm-9"> 
+                                <textarea ng-model="currentProduct.description" placeholder="product description" id="productdescription" class="form-control"></textarea>
+                            </div>
+                          </div>
+                    </form>
+                    
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-dismiss="modal" ng-click="saveProduct()"><i class="fa fa-database"></i>&nbsp;Save</button>
+                    <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
 
 ```
 
-The code itself revolves around rendering .phtml and markdown templates from the `/views` folder as well as static assets from the www folder. See the www/index.php:
+The `createUpdate` dialog is a standard bootstrap dialog that gets triggered by the buttons using the bootstrap javascript. As the dialogs are triggered though, the angular `addProduct` and `editProduct` methods are called to set up the contents of the dialog.
+
+```
+        $scope.editProduct = function(nProduct){
+            // get ready to show the dialog
+            angular.extend($scope.currentProduct, $scope.products[nProduct]);
+            $scope.nCurrent = nProduct;
+            $scope.title="Edit Product";
+        };
+        $scope.addProduct = function(){
+            // get ready to show the dialog
+            $scope.currentProduct = {};
+            $scope.nCurrent = -1;
+            $scope.title="Add Product";
+        };
+
 
 ```
 
-<?php
+The crud methods themselves are invoked buttons on the dialogs themselves.
 
-require __DIR__ . "/../vendor/autoload.php";
+```
 
-//connect to database
-$oDb = new PDO("sqlite:" . __DIR__ . "/../products.sqlite");
-
-$oApp = new \Slim\Slim(array(
-        'view' => new \PHPView\PHPView(),
-        'templates.path' => __DIR__ . "/../views" ));
-                       
-$oApp->get("/", function(){
-    renderProduct(1);
-});
-
-$oApp->get("/about", function()use($oApp){
-   $oApp->render("about.phtml"); 
-});
-
-$oApp->get("/contact", function()use($oApp){
-   $oApp->render("contact.phtml"); 
-});
-
-$oApp->get("/privacy", function()use($oApp){
-   $oApp->render("privacy.phtml"); 
-});
-
-$oApp->get("/success", function()use($oApp){
-   $oApp->render("success.phtml"); 
-});
-
-$oApp->get("/failure", function()use($oApp){
-   $oApp->render("failure.phtml"); 
-});
-
-$oApp->get("/products/:productID", function($nId){
-    renderProduct($nId);
-});
+        $scope.saveProduct = function(){
+            if($scope.nCurrent == -1){
+                // then add a new product to the list
+                $http.post("/crud/products", $scope.currentProduct).success(function(oProduct){
+                    $scope.products.push(oProduct);
+                }).error(failure);
+            }else{
+                // copy the product back in to the list
+                $http.post("/crud/products/" + $scope.currentProduct.productID, $scope.currentProduct).success(function(oProduct){
+                    $scope.products[$scope.nCurrent] = oProduct;
+                }).error(failure);
+            }
+        };
+        $scope.deleteProduct = function(){
+            // remove the product from the list
+            $http.delete("/crud/products/" + $scope.currentProduct.productID).success(function(){
+                $scope.products.splice($scope.nCurrent, 1);
+            }).error(failure);
+        };
 
 
-$oApp->run();
+```
 
-function renderProduct($nId){
-    global $oApp, $oDb;
-    // fetching product
-    $oStmt = $oDb->prepare("SELECT * FROM products WHERE productID = :id");
-    $oStmt->bindParam("id", $nId);
-    $oStmt->execute();
-    $aProduct = $oStmt->fetchAll(PDO::FETCH_OBJ);
-    
-    //fetching images
-    $oStmt = $oDb->prepare("SELECT * FROM images WHERE productID = :id");
-    $oStmt->bindParam("id", $nId);
-    $oStmt->execute();
-    $aImages = $oStmt->fetchAll(PDO::FETCH_OBJ);
+These methods call the index.php crud/products endpoint which are protected by `new \Auth()` from being accessed unless the user is logged in:
 
-    //fetching offers
-    $oStmt = $oDb->prepare("SELECT * FROM offers WHERE productID = :id");
-    $oStmt->bindParam("id", $nId);
-    $oStmt->execute();
-    $aOffers = $oStmt->fetchAll(PDO::FETCH_OBJ);
+```
 
-    //fetching list of products for the bar across the bottom
+$oApp->get("/crud/products", new \Auth(), function() use($oDb){
     $oStmt = $oDb->prepare("SELECT * FROM products");
     $oStmt->execute();
-    $aProducts = $oStmt->fetchAll(PDO::FETCH_OBJ);    
-    
-    // render template with data
-    $oApp->render("product.phtml", array("product"=>$aProduct[0], "images"=>$aImages, "offers"=>$aOffers, "products"=>$aProducts));   
-}
+    $aProducts = $oStmt->fetchAll(PDO::FETCH_OBJ);
+    echo json_encode($aProducts);
+});
+$oApp->post("/crud/products", new \Auth(), function() use($oDb, $oApp){
+    $oData = json_decode($oApp->request->getBody());
+    $oStmt = $oDb->prepare("INSERT INTO products(name, description) VALUES(:name, :description)");
+    $oStmt->bindParam("name", $oData->name);
+    $oStmt->bindParam("description", $oData->description);
+    $oStmt->execute();
+    $oData->productID = $oDb->lastInsertId();
+    echo json_encode($oData);
+});
+$oApp->post("/crud/products/:productID", new \Auth(), function($nProductID) use($oDb, $oApp){
+    $oData = json_decode($oApp->request->getBody());
+    $oStmt = $oDb->prepare("UPDATE products SET name = :name, description = :description where productID = :id");
+    $oStmt->bindParam("name", $oData->name);
+    $oStmt->bindParam("description", $oData->description);
+    $oStmt->bindParam("id", $nProductID);
+    $oStmt->execute();
+    echo json_encode($oData);
+});
+$oApp->delete("/crud/products/:productID", new \Auth(), function($nProductID) use($oDb, $oApp){
+    $oStmt = $oDb->prepare("DELETE FROM products where productID = :id");
+    $oStmt->bindParam("id", $nProductID);
+    $oStmt->execute();
+    echo '{"result":"success"}';
+});
+
+
 
 ```
 
-There is also an inquiry form in the views/contact.phtml that is based on a web service that I am providing my students:
+Users become logged in by accessing the login url:
 
 ```
 
-        <form action="https://rich-hildred.rhcloud.com/Mailer/56519ee51ea119ef4e20e8">
-            <input type="email" name="email" placeholder="Reply email address" />
-            <br />
-            <input type="text" name="subject" placeholder="Subject of your inquiry" />
-            <br />
-            <textarea name="message" placeholder="Your Inquiry"></textarea>
-            <br />
-            <button type="submit" class="btn btn-primary btn-md">Send</button>
-            <button type="reset" class="btn btn-primary btn-md">Reset</button>
-            <br />
-        </form>
+// endpoints for auth
+$oApp->get("/login", function() use( $oApp){
+    // see if this is the original redirect or if it's the callback
+    $sCode = $oApp->request->params('code');
+    // get the uri to redirect to
+    $sUrl = "http";
+    if(!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443)
+    {
+        $sUrl .= "s";
+    }
+    $sUrl .= "://" . $_SERVER["HTTP_HOST"] . $_SERVER["REQUEST_URI"];
+    $oAuth = new \Oauth2($sUrl);
+    if($sCode == null){
+        $oApp->response->redirect($oAuth->redirectUrl());
+    }else{
+        $oAuth->handleCode($sCode);
+        $oApp->response->redirect("/");
+    }
+});
+$oApp->get("/currentUser", new \Auth(), function() use($oApp){
+    echo json_encode($_SESSION['CurrentUser']);
+});
+$oApp->get("/logout", function(){
+    session_start();
+    unset($_SESSION["CurrentUser"]);
+});
 
 ```
 
-If you surf to [rich-hildred.rhcloud.com](https://rich-hildred.rhcloud.com/login) you can set up your own url to put in the form action with a google plus oauth2 login. The inquiry form uses the `/success` and `/failure` endpoints in the above index.phtml. Alternatively you could use the `rhildred/mailer` composer package to make your own endpoint to send mail. I also have a composer package rhildred/bitbucket-bug-report, which can be used to create a bug report on bitbucket for inquiries.
+ which in turn accesses a file holding google oauth2 credentials /creds/google.json
 
-The idea is that this can be used in an introductory modern php class to scaffold a student's site based on some other subject and content.
+
+```
+
+{"ClientID":"<your client id>", "ClientSecret":"<your client secret>",
+"Users":["<email of person you want to be able to update>"]}
+Status API Training Shop Blog About Pricing
+
+
+```
